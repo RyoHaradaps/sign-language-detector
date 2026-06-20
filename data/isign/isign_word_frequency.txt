@@ -1,0 +1,24 @@
+ISL Word Frequency in iSign Dataset
+==================================================
+
+namaste           33,612
+no                21,301
+help               9,481
+today              7,393
+food               5,829
+stop               4,964
+time               4,085
+love               3,089
+work               3,029
+family             2,669
+yes                2,641
+school             2,090
+water              1,613
+friend             1,527
+bad                1,228
+good               1,029
+yesterday            497
+thank_you            411
+tomorrow             388
+please               318
+sorry                147

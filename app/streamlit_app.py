@@ -196,84 +196,110 @@ with tab1:
 # --- Tab 2: Real-Time Webcam ---
 with tab2:
     st.header("Real-Time Webcam Detection")
-    st.warning("⚠️ Uses your phone as webcam via IP Webcam (192.168.1.3:8080)")
+    st.warning("⚠️ Uses your phone as webcam via IP Webcam")
     
-    # Phone IP configuration
-    phone_ip_input = st.text_input("Phone IP Address", value="192.168.1.3:8080")
-    use_camera = st.button("🎥 Start Webcam Detection")
+    # Allow manual URL entry
+    video_url_input = st.text_input(
+        "Video URL",
+        value="http://192.0.0.4:8080/video",
+        help="Try: /video?front, /video?camera=1, etc."
+    )
+    
+    # Add quality slider
+    process_every_n_frames = st.slider(
+        "⚡ Process every N frames (higher = faster)",
+        min_value=1,
+        max_value=10,
+        value=3,
+        help="Process every Nth frame. Higher values = faster but less smooth."
+    )
+    
+    use_camera = st.button("🎥 Start Webcam Detection", type="primary")
     
     if use_camera:
         if model is None:
-            st.error("Model not loaded. Please check model files.")
+            st.error("❌ Model not loaded. Please check model files.")
         else:
             try:
-                # Construct the video URL (use the user input)
-                video_url = f"http://{phone_ip_input}/video"
-                st.info(f"Connecting to: {video_url}")
+                st.info(f"Connecting to: {video_url_input}")
                 
-                cap = cv2.VideoCapture(video_url)
+                cap = cv2.VideoCapture(video_url_input)
                 if not cap.isOpened():
-                    st.error("Cannot connect to phone camera. Make sure IP Webcam is running.")
+                    st.error("❌ Cannot connect. Try different URL format.")
                     st.stop()
                 
-                st.info("Camera connected! Show your signs...")
+                # Set buffer size to reduce lag
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                
+                st.success("✅ Camera connected! Show your signs...")
                 
                 buffer = []
                 prediction = "Waiting..."
                 confidence = 0.0
+                frame_count = 0
+                processed_count = 0
                 
                 # Create placeholders
                 frame_placeholder = st.empty()
                 text_placeholder = st.empty()
+                metrics_placeholder = st.empty()
                 
                 # Run detection loop
                 while True:
                     ret, frame = cap.read()
                     if not ret:
-                        st.warning("Camera disconnected. Please check connection.")
+                        st.warning("⚠️ Camera disconnected. Please check connection.")
                         break
+                    
+                    frame_count += 1
+                    
+                    # Resize frame for faster processing
+                    frame = cv2.resize(frame, (426, 320))
                     
                     # Flip frame for mirror effect
                     frame = cv2.flip(frame, 1)
                     
-                    # Extract landmarks
-                    landmarks, _ = extract_landmarks(frame)
-                    buffer.append(landmarks)
-                    
-                    if len(buffer) > SEQ_LEN:
-                        buffer.pop(0)
-                    
-                    if len(buffer) == SEQ_LEN:
-                        input_seq = np.array(buffer).reshape(1, SEQ_LEN, FEATURE_DIM)
-                        preds = model.predict(input_seq, verbose=0)[0]
-                        idx = np.argmax(preds)
-                        conf = preds[idx]
+                    # Extract landmarks only every Nth frame
+                    if frame_count % process_every_n_frames == 0:
+                        processed_count += 1
+                        landmarks, _ = extract_landmarks(frame)
+                        buffer.append(landmarks)
                         
-                        if conf > CONFIDENCE_THRESHOLD:
-                            prediction = classes[idx]
-                            confidence = conf
-                        else:
-                            prediction = "???"
-                            confidence = conf
+                        if len(buffer) > SEQ_LEN:
+                            buffer.pop(0)
+                        
+                        if len(buffer) == SEQ_LEN:
+                            input_seq = np.array(buffer).reshape(1, SEQ_LEN, FEATURE_DIM)
+                            preds = model.predict(input_seq, verbose=0)[0]
+                            idx = np.argmax(preds)
+                            conf = preds[idx]
+                            
+                            if conf > CONFIDENCE_THRESHOLD:
+                                prediction = classes[idx]
+                                confidence = conf
+                            else:
+                                prediction = "???"
+                                confidence = conf
                     
-                    # Display frame with overlay
-                    cv2.putText(frame, f"Sign: {prediction}", (10, 50),
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
-                    cv2.putText(frame, f"Conf: {confidence:.2f}", (10, 100),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                    # Display frame with overlay (every frame for smooth video)
+                    cv2.putText(frame, f"Sign: {prediction}", (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    cv2.putText(frame, f"Conf: {confidence:.2f}", (10, 60),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
                     
                     # Convert BGR to RGB for Streamlit
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     frame_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
                     
                     # Update prediction text
-                    text_placeholder.markdown(f"### Prediction: **{prediction}** (Confidence: {confidence:.2f})")
+                    text_placeholder.markdown(f"### 🎯 Prediction: **{prediction}**")
+                    metrics_placeholder.info(f"📊 Confidence: {confidence:.2f} | Frames: {frame_count} | Processed: {processed_count}")
                 
                 cap.release()
                 cv2.destroyAllWindows()
                 
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"❌ Error: {e}")
                 st.stop()
                 
 # --- Tab 3: About ---
