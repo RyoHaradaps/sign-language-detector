@@ -43,7 +43,7 @@ class IsignRecorder:
             min_tracking_confidence=0.5
         )
         self.target_samples = 50
-        self.phone_ip = "http://192.0.0.4:8080/video"  # Use correct IP
+        self.phone_ip = "http://192.0.0.4:8080/video"  # Update to your IP
     
     def extract_landmarks(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -57,6 +57,16 @@ class IsignRecorder:
         while len(data) < 126:
             data.append(0.0)
         return np.array(data[:126]), results
+    
+    def count_existing_samples(self, sign_name):
+        """Count how many samples already exist for a sign"""
+        count = 0
+        data_dir = 'data/raw_landmarks'
+        if os.path.exists(data_dir):
+            for file in os.listdir(data_dir):
+                if file.startswith(f"{sign_name}_") and file.endswith('.csv'):
+                    count += 1
+        return count
     
     def record_sequence(self, sign_name, duration=3):
         print(f"📱 Connecting to phone: {self.phone_ip}")
@@ -119,23 +129,30 @@ def main():
     print(f"\n📱 Phone IP: {recorder.phone_ip}")
     print("   Make sure IP Webcam is running on your phone!")
     
+    # Count existing samples for each sign
+    print("\n📊 Current Progress:")
+    for idx, sign in SIGNS.items():
+        existing = recorder.count_existing_samples(sign)
+        print(f"  {idx}: {sign} → {existing}/{recorder.target_samples} existing")
+    
     print("\nAvailable signs to record:")
     for idx, sign in SIGNS.items():
         print(f"  {idx}: {sign}")
     
     print(f"\n🎯 Target: {recorder.target_samples} samples per sign")
     
-    counts = {sign: 0 for sign in SIGNS.values()}
-    
-    print("\nSelect signs to record:")
+    print("\nCommands:")
     print("  - Enter sign number (0-15) to record that sign")
-    print("  - Type 'auto' to record all signs one by one")
-    print("  - Type 'list' to show signs again")
+    print("  - Type 'auto' to record all signs from start")
+    print("  - Type 'auto X' to start from sign X (e.g., 'auto 1' for thank_you)")
+    print("  - Type 'list' to show progress")
     print("  - Type 'quit' to exit")
+    
+    counts = {sign: recorder.count_existing_samples(sign) for sign in SIGNS.values()}
     
     while True:
         print("\n" + "-"*50)
-        user_input = input("Enter sign number, 'auto', 'list', or 'quit': ").strip()
+        user_input = input("Enter command: ").strip()
         
         if user_input == 'quit':
             break
@@ -144,8 +161,28 @@ def main():
             for idx, sign in SIGNS.items():
                 print(f"  {idx}: {sign} → {counts[sign]}/{recorder.target_samples}")
             continue
-        elif user_input == 'auto':
-            for sign in SIGNS.values():
+        elif user_input.startswith('auto'):
+            # Parse start index
+            parts = user_input.split()
+            start_idx = 0
+            if len(parts) > 1:
+                try:
+                    start_idx = int(parts[1])
+                    if start_idx not in SIGNS:
+                        print(f"❌ Invalid sign number. Choose 0-{len(SIGNS)-1}")
+                        continue
+                except ValueError:
+                    print("❌ Invalid number. Usage: 'auto X' where X is 0-15")
+                    continue
+            
+            print(f"\n🔄 Starting auto-recording from sign {start_idx}: {SIGNS[start_idx]}")
+            
+            for idx in range(start_idx, len(SIGNS)):
+                sign = SIGNS[idx]
+                print(f"\n{'='*50}")
+                print(f"📌 Now recording: {sign} (Index {idx})")
+                print(f"{'='*50}")
+                
                 while counts[sign] < recorder.target_samples:
                     counts[sign] += 1
                     print(f"\n🎬 Recording: {sign} (#{counts[sign]}/{recorder.target_samples})")
@@ -155,6 +192,36 @@ def main():
                     else:
                         counts[sign] -= 1
                         print("❌ Failed (not enough frames), retrying...")
+                
+                print(f"✅ Completed {sign} with {counts[sign]} samples!")
+            
+            print(f"\n🎉 All signs recorded successfully!")
+            break
+        
+        elif user_input == 'auto':
+            # Default: start from 0
+            start_idx = 0
+            print(f"\n🔄 Starting auto-recording from sign {start_idx}: {SIGNS[start_idx]}")
+            
+            for idx in range(start_idx, len(SIGNS)):
+                sign = SIGNS[idx]
+                print(f"\n{'='*50}")
+                print(f"📌 Now recording: {sign} (Index {idx})")
+                print(f"{'='*50}")
+                
+                while counts[sign] < recorder.target_samples:
+                    counts[sign] += 1
+                    print(f"\n🎬 Recording: {sign} (#{counts[sign]}/{recorder.target_samples})")
+                    seq = recorder.record_sequence(sign, duration=3)
+                    if len(seq) > 5:
+                        recorder.save(seq, sign, counts[sign])
+                    else:
+                        counts[sign] -= 1
+                        print("❌ Failed (not enough frames), retrying...")
+                
+                print(f"✅ Completed {sign} with {counts[sign]} samples!")
+            
+            print(f"\n🎉 All signs recorded successfully!")
             break
         
         try:
@@ -175,7 +242,7 @@ def main():
                 print("❌ Failed (not enough frames)")
                 
         except ValueError:
-            print("Invalid input")
+            print("❌ Invalid command. Type 'auto', 'auto X', 'list', or 'quit'")
 
 if __name__ == "__main__":
     main()
