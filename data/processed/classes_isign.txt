@@ -1,0 +1,16 @@
+bad
+food
+friend
+good
+help
+love
+namaste
+no
+please
+school
+sorry
+stop
+thank_you
+water
+work
+yes
